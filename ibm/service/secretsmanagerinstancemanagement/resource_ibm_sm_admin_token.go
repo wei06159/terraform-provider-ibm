@@ -50,6 +50,7 @@ func ResourceIbmSmAdminToken() *schema.Resource {
 			"response_wrapping": &schema.Schema{
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Default:     true,
 				ForceNew:    true,
 				Description: "If true, the admin token is returned as a Vault response-wrapped token in wrapped_token instead of token.",
 			},
