@@ -6,11 +6,12 @@ package secretsmanagerinstancemanagement
 import (
 	"context"
 	"fmt"
-	"github.com/IBM-Cloud/terraform-provider-ibm/ibm/flex"
-	"github.com/IBM/secrets-manager-management-go-sdk/v2/secretsmanagerinstancemanagementv2"
 	"log"
 	"strconv"
 	"time"
+
+	"github.com/IBM-Cloud/terraform-provider-ibm/ibm/flex"
+	"github.com/IBM/secrets-manager-management-go-sdk/v2/secretsmanagerinstancemanagementv2"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -35,6 +36,12 @@ func ResourceIbmSmAdminToken() *schema.Resource {
 				Description: "The service instance ID.",
 				ForceNew:    true,
 			},
+			"response_wrapping": &schema.Schema{
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "If true, the admin token is returned as a Vault response-wrapped token in wrapped_token instead of token.",
+			},
 			"created_at": &schema.Schema{
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -44,6 +51,12 @@ func ResourceIbmSmAdminToken() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "The admin token.",
+				Sensitive:   true,
+			},
+			"wrapped_token": &schema.Schema{
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "A Vault response-wrapped token. Present only when response wrapping is requested.",
 				Sensitive:   true,
 			},
 		},
@@ -60,13 +73,27 @@ func generateSmAdminToken(context context.Context, d *schema.ResourceData, meta 
 
 	createTokenOptions := &secretsmanagerinstancemanagementv2.CreateVaultAdmintokenOptions{}
 	createTokenOptions.SetID(d.Get("instance_id").(string))
+	if v, ok := d.GetOk("response_wrapping"); ok {
+		createTokenOptions.SetResponseWrapping(v.(bool))
+	}
 	tokenResponse, _, err := secretsManagerInstanceManagementClient.CreateVaultAdmintokenWithContext(context, createTokenOptions)
 	if err != nil {
 		tfErr := flex.DiscriminatedTerraformErrorf(err, err.Error(), AdminTokenResourceName, operation, "create-token")
 		log.Printf("[DEBUG]\n%s", tfErr.GetDebugMessage())
 		return tfErr.GetDiag()
 	}
-	d.Set("token", tokenResponse.Token)
+	tokenModel, ok := tokenResponse.(*secretsmanagerinstancemanagementv2.Token)
+	if !ok {
+		err := fmt.Errorf("unexpected admin token response type %T", tokenResponse)
+		tfErr := flex.TerraformErrorf(
+			err, err.Error(), AdminTokenResourceName, operation,
+		)
+		log.Printf("[DEBUG]\n%s", tfErr.GetDebugMessage())
+		return tfErr.GetDiag()
+	}
+
+	d.Set("token", tokenModel.Token)
+	d.Set("wrapped_token", tokenModel.WrappedToken)
 	d.Set("created_at", time.Now().Format(time.RFC3339))
 	return nil
 }
